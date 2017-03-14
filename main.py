@@ -5,11 +5,15 @@ import subprocess
 import sys
 import time
 
+def log(message, level=1):
+    if debug >= level:
+        print(message)
 
 def waitForAndCheckInternet():
     interval = 0.5
     # first, wait until we've reconnected to the wifi
     # we give this a timeout of 10 seconds before trying again
+    log("awaiting network connection")
     timeout = 10
     while ni.AF_INET not in ni.ifaddresses(iface):
         timeout -= interval
@@ -22,6 +26,7 @@ def waitForAndCheckInternet():
     # check a known 200 response from CURL
     # sometimes this can randomly take a while so retry if > 6 seconds
     # if we've been doing this for > 60 seconds, someting bad happened
+    log("connected! attempting to access the Internet")
     for loopCounter in range(5):
         '''
             Southwest airlines:
@@ -32,27 +37,29 @@ def waitForAndCheckInternet():
                 result.returncode == 56 on redirect
         '''
         try:
-            #print("accessing neverssl.co via curl...")
+            log("accessing neverssl.com via curl...")
             # while preferable, calling "curl -I" hangs on gogoinflight
             #result = subprocess.run(('curl', '-I', 'neverssl.com'),
             result = subprocess.run(('curl', 'http://neverssl.com/'),
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=6)
+            log(result.stdout, 2)
             if result.returncode == 0:
                 # this happens on southwest airlines
-                #print("successful response acquired")
+                log("successful response acquired")
                 break
             if result.returncode == 56:
                 # united (gogo inflight)
                 break
-            #print("unsuccessful curl response")
+            log("unsuccessful curl response")
             time.sleep(increment)
         except:
             # curl timed out? try again
-            #print("curl timeout")
+            log("curl timeout")
             pass
     try:
         return result.stdout[:15] == b'HTTP/1.0 200 OK'
     except:
+        # TODO: reset the wifi and try again
         print("    Connection timeout")
         return False
 
@@ -73,6 +80,7 @@ def run(candidates, keepGoing=False):
         print("Attempt {}/{} ({})".format(idx+1, total, mac))
         resetInterface(mac)
         success = waitForAndCheckInternet()
+        log("Success: {}".format(success))
         if success:
             print("    SUCCESS!")
             valid.append(mac)
@@ -97,6 +105,12 @@ keepGoing = True
 try:
     iface = sys.argv[1]
     hosts_file = sys.argv[2]
+    debug = 0
+    if len(sys.argv) > 3:
+        if sys.argv[3] == '-v':
+            debug = 1
+        elif sys.argv[3] == '-vv':
+            debug = 2
 except:
     print("Usage: {} interface hostsfile".format(sys.argv[0]))
     sys.exit(1)
