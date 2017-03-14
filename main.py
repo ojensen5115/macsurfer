@@ -14,7 +14,7 @@ def waitForAndCheckInternet():
     # first, wait until we've reconnected to the wifi
     # we give this a timeout of 10 seconds before trying again
     log("awaiting network connection")
-    timeout = 10
+    originalTimeout = 15
     while ni.AF_INET not in ni.ifaddresses(iface):
         timeout -= interval
         if timeout == 0:
@@ -32,7 +32,7 @@ def waitForAndCheckInternet():
             Southwest airlines:
                 curl -I works
                 result.returncode == 0 for both normal and redirect
-            Gogo Inflight (United):
+            Gogo Inflight (United, Delta):
                 curl -I hangs
                 result.returncode == 56 on redirect
         '''
